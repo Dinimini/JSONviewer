@@ -1,0 +1,23 @@
+/* Add your CSS rules here */
+#spacerContainer {
+    cursor: pointer;
+    background-color: rgba(255, 0, 0, 0.5);
+    width: 100px;
+    height: 100px;
+    border: 2px solid #000000;
+    position: fixed;
+    top: 0;
+    right: 0;
+}
+.objectHeader {
+    font-weight: bold;
+}
+
+.finalData {
+    font-weight: normal;
+    display: inline-block;
+}
+
+.inline {
+  display: inline-block;
+}
