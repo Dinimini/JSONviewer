@@ -21,7 +21,11 @@ const defaultStyle = {
     lineHeight: '20px',
     padding: '2px',
     borderRadius: '4px',
-    border: '1px solid #ccc',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: '#ccc',
+    fontWeight: 'normal',
+    fontFamily: 'Arial, sans-serif'
 }
 const backgroundColors = ['#FFCDD2', '#F8BBD0', '#E1BEE7', '#D1C4E9', '#C5CAE9', '#BBDEFB', '#B3E5FC', '#B2EBF2', '#B2DFDB', '#C8E6C9', '#DCEDC8', '#F0F4C3', '#FFF9C4', '#FFECB3', '#FFE0B2', '#FFCCBC'];
 
@@ -64,7 +68,7 @@ function findById(id) {
 }
 
 function makeClasslist(codeString) {
-    const classList = [codeString, codeString.length.toString(), "jsonElement"];
+    const classList = [codeString,  "jsonElement"];
     classCodes[codeString] = "";
     return classList;
 
@@ -194,7 +198,7 @@ function reRenderDisplay(){
 function eventuateAllElements(){
     document.querySelectorAll(".jsonElement").forEach((child) => {
         child.addEventListener("click", (event) => {
-                let assignToClass = isClass ?event.target.classList[0]:event.target.id.toString();
+                let assignToClass = isClass ? event.target.classList[0]:event.target.id.toString();
                 targetElement = assignToClass;
             console.log(assignToClass);
         });
@@ -218,11 +222,12 @@ function stringifyStyle(styleObject) {
 }
 
 function displayJsonData(parent, data, depth = 0, classCode = "r", inline = false) {
+    
     let newStyle = {...defaultStyle};
     newStyle.marginLeft = `${depth * displacement}px`;
     newStyle.lineHeight = `${lineheight}px`;
     newStyle.display = "block";
-    newStyle.backgroundColor = backgroundColors[sequentialId % 3];
+    newStyle.backgroundColor = backgroundColors[sequentialId % backgroundColors.length];
     let final = null;
     if (style[sequentialId.toString()]){
         final = style[sequentialId.toString()];
@@ -233,16 +238,17 @@ function displayJsonData(parent, data, depth = 0, classCode = "r", inline = fals
     final&& Object.entries(final).forEach( ([key, value]) => {
         newStyle[key] = value;
     });
-
     sequentialId++;
     if (!(data instanceof Object) && !(data instanceof Array)) {
         final = createHtmlElement({ parent: parent, tag: 'div', content: `${data}`, id: sequentialId.toString(), classes: makeClasslist(classCode), attributes: {style: stringifyStyle(newStyle) } });
+        sequentialId++;
         return;
     }
     if (data instanceof Object) {
         let i = true;
         for (const [key, value] of Object.entries(data)) {
             let newParent = createHtmlElement({ parent: parent, tag: 'div', id: sequentialId.toString(), classes: makeClasslist(classCode), content: `${key}:`, attributes:  {style: stringifyStyle(newStyle) } });
+                
             displayJsonData(newParent, value, depth + 1, classCode + 'O', i);
             i = false;
         }
@@ -250,6 +256,7 @@ function displayJsonData(parent, data, depth = 0, classCode = "r", inline = fals
     if (data instanceof Array) {
         for (let datum of data){
             const element =createHtmlElement({ parent: parent, tag: 'div', id: sequentialId.toString(), classes: makeClasslist(classCode), attributes: {style: stringifyStyle(newStyle) } });
+                
             displayJsonData(element, datum, depth + 1, classCode + 'A');
         };
     }
