@@ -1,4 +1,4 @@
-let url = 'https://jvvkjy8utk.execute-api.eu-central-1.amazonaws.com/tourist/api/countries/all';
+let url = 'https://www.dnd5eapi.co/api/2014/classes/barbarian';
 let apiKey = '';
 let mainJson = {};
 let sequentialId = 0;
@@ -9,6 +9,20 @@ let isEditorOpen = false;
 const style = {};
 let targetElement = null;
 const classCodes = {};
+let selectedStyleKey = [''];
+let selectedStyleValue = '';
+let isClass = false;
+const defaultStyle = {
+    color: 'black',
+    fontSize: '14px',
+    backgroundColor: 'white',
+    display: 'block',
+    marginLeft: '0px',
+    lineHeight: '20px',
+    padding: '2px',
+    borderRadius: '4px',
+    border: '1px solid #ccc',
+}
 const backgroundColors = ['#FFCDD2', '#F8BBD0', '#E1BEE7', '#D1C4E9', '#C5CAE9', '#BBDEFB', '#B3E5FC', '#B2EBF2', '#B2DFDB', '#C8E6C9', '#DCEDC8', '#F0F4C3', '#FFF9C4', '#FFECB3', '#FFE0B2', '#FFCCBC'];
 
 function createHtmlElement({ tag, content = '', parent = null, classes = [], id = '', attributes = {} }) {
@@ -54,6 +68,17 @@ function makeClasslist(codeString) {
     classCodes[codeString] = "";
     return classList;
 
+}
+
+function selectMaker(from, variable, parent){
+    const select = createHtmlElement({ tag: 'select', parent: parent, id: `${variable}Select` });
+    from.forEach((optionValue) => {
+        const option = createHtmlElement({ tag: 'option', parent: select, content: optionValue, attributes: { value: optionValue } });
+    });
+    select.addEventListener('change', (event) => {
+        variable[0] = event.target.value;
+    });
+    return select;
 }
 
 async function onButtonClick() {
@@ -115,31 +140,36 @@ async function fetchJsonData(url, apiKey) {
 }
 
 function createEditorLayout(root) {
-    const editor = createHtmlElement({ tag: "div", parent: root, id: "editorContainer", classes: ["vertical"] });
-    const styleKey = createHtmlElement({ tag: "input", parent: editor, id: "styleKey", classes: [], attributes: { type: "text", placeholder: "Enter CSS property (e.g., color, fontSize)" } });
+    const editor = createHtmlElement({ tag: "div", parent: root, id: "editorContainer"});
+    const styleKey = selectMaker(Object.keys(defaultStyle), selectedStyleKey, editor);
     const styleValue = createHtmlElement({ tag: "input", parent: editor, id: "styleValue", classes: [], attributes: { type: "text", placeholder: "Enter CSS value (e.g., red, 20px)" } });
-    [styleKey, styleValue].forEach((input) => {
-        input.addEventListener("change", (event) => {
-        styleHolders[event.target.id] = event.target.value;});
+    
+        styleValue.addEventListener("change", (event) => {
+        selectedStyleValue = event.target.value;
     });
     const applyStyleBtn = createHtmlElement({ tag: "button", parent: editor, id: "applyStyleBtn", classes: [], content: "Apply Style" });
     applyStyleBtn.addEventListener("click", () => {
-        style[targetElement] = styleHolders["styleValue"];
-        console.log(styleHolders, targetElement, style);
+        style[targetElement] = style[targetElement] || {};
+        style[targetElement][selectedStyleKey[0]] = selectedStyleValue;
+        console.log(style);
+        console.log(defaultStyle);
         reRenderDisplay();
 
     });
-
+    const toggleClassBtn = createHtmlElement({ tag: "button", parent: editor, id: "toggleClassBtn", classes: [], content: "Toggle Class/Classless" });
+    toggleClassBtn.addEventListener("click", () => {
+        isClass = !isClass;
+    });
 
 }
 
 function buildLayout() {
     
     const root = findById('root');
-    const quiz = createHtmlElement({ tag: "div", parent: root, id: "quizContainer", classes: ["vertical"] });
+    const quiz = createHtmlElement({ tag: "div", parent: root, id: "quizContainer" });
     createEditorLayout(quiz);
     buildSpacer(quiz);
-    createHtmlElement({ tag: "div", parent: root, id: "displayContainer", classes: ["vertical"] });
+    createHtmlElement({ tag: "div", parent: root, id: "displayContainer" });
     findById("quizContainer").appendChild(createQuizDiv());
     findById("url").addEventListener("change", (event) => {
         url = event.target.value;
@@ -156,6 +186,7 @@ function clearDisplay(id) {
 
 function reRenderDisplay(){
     clearDisplay("displayContainer");
+    sequentialId = 0;
     displayJsonData(findById("displayContainer"), mainJson);
     eventuateAllElements();
 }
@@ -163,8 +194,9 @@ function reRenderDisplay(){
 function eventuateAllElements(){
     document.querySelectorAll(".jsonElement").forEach((child) => {
         child.addEventListener("click", (event) => {
-            targetElement = event.target.classList[0];
-            console.log(event.target.classList[0]);
+                let assignToClass = isClass ?event.target.classList[0]:event.target.id.toString();
+                targetElement = assignToClass;
+            console.log(assignToClass);
         });
     });
 }
@@ -179,23 +211,45 @@ function buildSpacer(parent){
     });
 };
 
-function displayJsonData(parent, data, depth = 0, classCode = "r") {
-    let additionalStyles = style[classCode] || "";
+function stringifyStyle(styleObject) {
+    return Object.entries(styleObject).map(([key, value]) => {
+        key = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+        return `${key}: ${value};`}).join(' ');
+}
+
+function displayJsonData(parent, data, depth = 0, classCode = "r", inline = false) {
+    let newStyle = {...defaultStyle};
+    newStyle.marginLeft = `${depth * displacement}px`;
+    newStyle.lineHeight = `${lineheight}px`;
+    newStyle.display = "block";
+    newStyle.backgroundColor = backgroundColors[sequentialId % 3];
+    let final = null;
+    if (style[sequentialId.toString()]){
+        final = style[sequentialId.toString()];
+    } else if (style[classCode]){
+        final = style[classCode];
+    }
+    final&&console.log(final);
+    final&& Object.entries(final).forEach( ([key, value]) => {
+        newStyle[key] = value;
+    });
 
     sequentialId++;
     if (!(data instanceof Object) && !(data instanceof Array)) {
-        final = createHtmlElement({ parent: parent, tag: 'div', content: `${data}`, classes: makeClasslist(classCode), attributes: {style: `margin-left: ${depth * displacement}px; line-height: ${lineheight}px; backgroundColor: ${backgroundColors[sequentialId%2]}${";" +additionalStyles}`} });
+        final = createHtmlElement({ parent: parent, tag: 'div', content: `${data}`, id: sequentialId.toString(), classes: makeClasslist(classCode), attributes: {style: stringifyStyle(newStyle) } });
         return;
     }
     if (data instanceof Object) {
+        let i = true;
         for (const [key, value] of Object.entries(data)) {
-            let newParent = createHtmlElement({ parent: parent, tag: 'div', classes: makeClasslist(classCode), content: `${key}:`, attributes:  {style: `margin-left: ${depth * displacement}px; line-height: ${lineheight}px; background-color: ${backgroundColors[sequentialId%3]} ${";" +additionalStyles}`}  });
-            displayJsonData(newParent, value, depth + 1, classCode + 'O');
+            let newParent = createHtmlElement({ parent: parent, tag: 'div', id: sequentialId.toString(), classes: makeClasslist(classCode), content: `${key}:`, attributes:  {style: stringifyStyle(newStyle) } });
+            displayJsonData(newParent, value, depth + 1, classCode + 'O', i);
+            i = false;
         }
     }
     if (data instanceof Array) {
         for (let datum of data){
-            const element =createHtmlElement({ parent: parent, tag: 'div', id: `jsonElement${sequentialId}`, classes: makeClasslist(classCode), attributes: {style: `margin-left: ${depth * displacement}px; line-height: ${lineheight}px; background-color: ${backgroundColors[sequentialId%3]} ${";" +additionalStyles}`} });
+            const element =createHtmlElement({ parent: parent, tag: 'div', id: sequentialId.toString(), classes: makeClasslist(classCode), attributes: {style: stringifyStyle(newStyle) } });
             displayJsonData(element, datum, depth + 1, classCode + 'A');
         };
     }

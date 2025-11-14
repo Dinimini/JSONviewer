@@ -9,15 +9,3 @@
     top: 0;
     right: 0;
 }
-.objectHeader {
-    font-weight: bold;
-}
-
-.finalData {
-    font-weight: normal;
-    display: inline-block;
-}
-
-.inline {
-  display: inline-block;
-}
