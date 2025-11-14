@@ -4,6 +4,11 @@ let mainJson = {};
 let sequentialId = 0;
 let lineheight = 20;
 let displacement = 20;
+const styleHolders = {};
+let isEditorOpen = false;
+const style = {};
+let targetElement = null;
+const classCodes = {};
 const backgroundColors = ['#FFCDD2', '#F8BBD0', '#E1BEE7', '#D1C4E9', '#C5CAE9', '#BBDEFB', '#B3E5FC', '#B2EBF2', '#B2DFDB', '#C8E6C9', '#DCEDC8', '#F0F4C3', '#FFF9C4', '#FFECB3', '#FFE0B2', '#FFCCBC'];
 
 function createHtmlElement({ tag, content = '', parent = null, classes = [], id = '', attributes = {} }) {
@@ -44,10 +49,18 @@ function findById(id) {
     return document.getElementById(id);
 }
 
+function makeClasslist(codeString) {
+    const classList = [codeString, codeString.length.toString(), "jsonElement"];
+    classCodes[codeString] = "";
+    return classList;
+
+}
+
 async function onButtonClick() {
     findById("displayContainer").innerHTML = '';
     await fetchJsonData(url, apiKey);
     displayJsonData(findById("displayContainer"), mainJson);
+    eventuateAllElements();
 }
 
 function buildEditorDiv() {
@@ -76,8 +89,6 @@ function createQuizDiv() {
   <form class="fetchDataForm">
     <label for="url">Write your url here!:</label>
     <input type="text" id="url" name="url">
-    <label for="fname">Paste your key here if you have any!</label>
-    <input type="text" id="key" name="key">
     <button type="button" id="closeWeatherBtn">Close</button>
   </form>
 `
@@ -103,18 +114,35 @@ async function fetchJsonData(url, apiKey) {
     }
 }
 
+function createEditorLayout(root) {
+    const editor = createHtmlElement({ tag: "div", parent: root, id: "editorContainer", classes: ["vertical"] });
+    const styleKey = createHtmlElement({ tag: "input", parent: editor, id: "styleKey", classes: [], attributes: { type: "text", placeholder: "Enter CSS property (e.g., color, fontSize)" } });
+    const styleValue = createHtmlElement({ tag: "input", parent: editor, id: "styleValue", classes: [], attributes: { type: "text", placeholder: "Enter CSS value (e.g., red, 20px)" } });
+    [styleKey, styleValue].forEach((input) => {
+        input.addEventListener("change", (event) => {
+        styleHolders[event.target.id] = event.target.value;});
+    });
+    const applyStyleBtn = createHtmlElement({ tag: "button", parent: editor, id: "applyStyleBtn", classes: [], content: "Apply Style" });
+    applyStyleBtn.addEventListener("click", () => {
+        style[targetElement] = styleHolders["styleValue"];
+        console.log(styleHolders, targetElement, style);
+        reRenderDisplay();
+
+    });
+
+
+}
+
 function buildLayout() {
     
     const root = findById('root');
     const quiz = createHtmlElement({ tag: "div", parent: root, id: "quizContainer", classes: ["vertical"] });
+    createEditorLayout(quiz);
     buildSpacer(quiz);
     createHtmlElement({ tag: "div", parent: root, id: "displayContainer", classes: ["vertical"] });
     findById("quizContainer").appendChild(createQuizDiv());
     findById("url").addEventListener("change", (event) => {
         url = event.target.value;
-    });
-    findById("key").addEventListener("change", (event) => {
-        apiKey = event.target.value;
     });
     findById("closeWeatherBtn").addEventListener("click", () => {
         fetchJsonData(url, apiKey);
@@ -126,32 +154,49 @@ function clearDisplay(id) {
     findById(id).innerHTML = '';
 }
 
+function reRenderDisplay(){
+    clearDisplay("displayContainer");
+    displayJsonData(findById("displayContainer"), mainJson);
+    eventuateAllElements();
+}
+
+function eventuateAllElements(){
+    document.querySelectorAll(".jsonElement").forEach((child) => {
+        child.addEventListener("click", (event) => {
+            targetElement = event.target.classList[0];
+            console.log(event.target.classList[0]);
+        });
+    });
+}
+
 function buildSpacer(parent){
     let container = parent.appendChild(createHtmlElement({ tag: 'div', classes: ['spacerPixel'], id: `spacerContainer` }) );
     container.addEventListener('click', (event) => {
         displacement = event.offsetX;
         lineheight = event.offsetY;
-        clearDisplay("displayContainer");
-        displayJsonData(findById("displayContainer"), mainJson);
+        reRenderDisplay();
+        
     });
-}
+};
 
-function displayJsonData(parent, data, depth = 0, inline = false) {
+function displayJsonData(parent, data, depth = 0, classCode = "r") {
+    let additionalStyles = style[classCode] || "";
+
     sequentialId++;
     if (!(data instanceof Object) && !(data instanceof Array)) {
-        final = parent.appendChild(createHtmlElement({ tag: 'div', content: `${data}`, classes: [`finalData`, depth.toString()], attributes: {style: `margin-left: ${depth * displacement}px; line-height: ${lineheight}px; backgroundColor: ${backgroundColors[sequentialId%2]}`} }));
+        final = createHtmlElement({ parent: parent, tag: 'div', content: `${data}`, classes: makeClasslist(classCode), attributes: {style: `margin-left: ${depth * displacement}px; line-height: ${lineheight}px; backgroundColor: ${backgroundColors[sequentialId%2]}${";" +additionalStyles}`} });
         return;
     }
     if (data instanceof Object) {
         for (const [key, value] of Object.entries(data)) {
-            let newParent = parent.appendChild(createHtmlElement({ tag: 'div', classes: [`objectHeader`, depth.toString()], content: `${key}:`, attributes:  {style: `margin-left: ${depth * displacement}px; line-height: ${lineheight}px; background-color: ${backgroundColors[sequentialId%3]}`}  }));
-            displayJsonData(newParent, value, depth + 1, true);
+            let newParent = createHtmlElement({ parent: parent, tag: 'div', classes: makeClasslist(classCode), content: `${key}:`, attributes:  {style: `margin-left: ${depth * displacement}px; line-height: ${lineheight}px; background-color: ${backgroundColors[sequentialId%3]} ${";" +additionalStyles}`}  });
+            displayJsonData(newParent, value, depth + 1, classCode + 'O');
         }
     }
     if (data instanceof Array) {
         for (let datum of data){
-            const element = parent.appendChild(createHtmlElement({ tag: 'div', id: `jsonElement${sequentialId}; background-color: ${backgroundColors[sequentialId%3]}` }));
-            displayJsonData(element, datum, depth + 1);
+            const element =createHtmlElement({ parent: parent, tag: 'div', id: `jsonElement${sequentialId}`, classes: makeClasslist(classCode), attributes: {style: `margin-left: ${depth * displacement}px; line-height: ${lineheight}px; background-color: ${backgroundColors[sequentialId%3]} ${";" +additionalStyles}`} });
+            displayJsonData(element, datum, depth + 1, classCode + 'A');
         };
     }
 }
