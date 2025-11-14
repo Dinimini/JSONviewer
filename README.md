@@ -70,8 +70,13 @@ JSONviewer/
 
 - Enter a JSON API URL and (optionally) an API key.
 - Click to fetch and render the JSON.
-- Click on elements to select and edit their styles.
+- There is a template url in the code so it will fetch data on an empy input field
+- Click on the toggle/class button to choose between
+    - individual
+    - generation-history based element selection
 - Use the editor panel for quick formatting.
+- The CSS values must be entered as text, there is no automatic formatting YET
+- Click the Apply style button and see the magic
 
 ---
 
