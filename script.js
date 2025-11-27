@@ -4,20 +4,15 @@ let mainJson = {};
 let sequentialId = 0;
 let lineheight = 20;
 let displacement = 20;
-const styleHolders = {};
 let isEditorOpen = false;
-const style = {};
-let targetElement = null;
-const classCodes = {};
-let selectedStyleKey = [''];
-let selectedStyleValue = '';
-let isClass = false;
-const defaultStyle = {
-    color: 'black',
+const styles = {id: {}, class: {}, defaultStyle: {    color: 'black',
     fontSize: '14px',
     backgroundColor: 'white',
     display: 'block',
     marginLeft: '0px',
+    marginRight: '0px',
+    textAlign: 'left',
+    
     lineHeight: '20px',
     padding: '2px',
     borderRadius: '4px',
@@ -25,8 +20,37 @@ const defaultStyle = {
     borderStyle: 'solid',
     borderColor: '#ccc',
     fontWeight: 'normal',
-    fontFamily: 'Arial, sans-serif'
-}
+    fontFamily: 'Arial, sans-serif'}, alternateStyle: {    color: 'black',
+    fontSize: '14px',
+    backgroundColor: 'white',
+    display: 'block',
+    marginLeft: '0px',
+    marginRight: '0px',
+    textAlign: 'left',
+    width: 'auto',
+    height: 'auto',
+    padding: '2px',
+    margin: '0px',
+    border: '1px solid #ccc',
+    background: 'white',
+    color: 'black',
+    fontSize: '14px',
+    fontFamily: 'Arial, sans-serif',
+    textAlign: 'left',
+    lineHeight: '20px',
+    padding: '2px',
+    borderRadius: '4px',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: '#ccc',
+    fontWeight: 'normal',
+    fontFamily: 'Arial, sans-serif'}};
+let targetElement = null;
+let targetStyle = {};
+const classCodes = {};
+let selectedStyleKey = [''];
+let selectedStyleValue = '';
+let isClass = false;
 const backgroundColors = ['#FFCDD2', '#F8BBD0', '#E1BEE7', '#D1C4E9', '#C5CAE9', '#BBDEFB', '#B3E5FC', '#B2EBF2', '#B2DFDB', '#C8E6C9', '#DCEDC8', '#F0F4C3', '#FFF9C4', '#FFECB3', '#FFE0B2', '#FFCCBC'];
 
 function createHtmlElement({ tag, content = '', parent = null, classes = [], id = '', attributes = {} }) {
@@ -92,37 +116,24 @@ async function onButtonClick() {
     eventuateAllElements();
 }
 
-function buildEditorDiv() {
-    const editorDiv = createHtmlElement({
-        tag: 'div',
-        id: 'editorDiv'
-    })
-    editorDiv.innerHTML = `
-    <form class="fetchDataForm">
-        <label for="url">Write your url here!:</label>
-        <input type="text" id="url" name="url">
-        <label for="fname">Paste your key here if you have any!</label>
-        <input type="text" id="key" name="key">
-        <button type="button" id="closeWeatherBtn">Close</button>
-    </form>
-  `
-    return editorDiv
-}
+
 
 function createQuizDiv() {
     const quizDiv = createHtmlElement({
         tag: 'div',
-        id: 'quizrDiv'
+        id: 'quizrDiv',
+        attributes: { style: 'border: 1px solid black; padding: 10px; margin-bottom: 10px; background-color: #f9f9f9; position: fixed; top: 0; left: 0; width: 100%; z-index: 1000;' }
     })
     quizDiv.innerHTML = `
   <form class="fetchDataForm">
-    <label for="url">Write your url here!:</label>
+    <label for="url" placeholder="Write your url here!">Write your url here!:</label>
     <input type="text" id="url" name="url">
-    <button type="button" id="closeWeatherBtn">Close</button>
+    <button type="button" id="closeWeatherBtn">Load</button>
   </form>
 `
     return quizDiv
 }
+
 
 async function fetchJsonData(url, apiKey) {
     try {
@@ -144,20 +155,20 @@ async function fetchJsonData(url, apiKey) {
 }
 
 function createEditorLayout(root) {
-    const editor = createHtmlElement({ tag: "div", parent: root, id: "editorContainer"});
-    const styleKey = selectMaker(Object.keys(defaultStyle), selectedStyleKey, editor);
+    const editor = createHtmlElement({ tag: "div", parent: root, id: "editorContainer", classes: ["editor"], attributes: { style: "border: 1px solid black; padding: 10px; position: relative;" } });
     const styleValue = createHtmlElement({ tag: "input", parent: editor, id: "styleValue", classes: [], attributes: { type: "text", placeholder: "Enter CSS value (e.g., red, 20px)" } });
     
         styleValue.addEventListener("change", (event) => {
         selectedStyleValue = event.target.value;
     });
+    const styleKeySelect = selectMaker(Object.keys(styles.defaultStyle), selectedStyleKey, editor);
     const applyStyleBtn = createHtmlElement({ tag: "button", parent: editor, id: "applyStyleBtn", classes: [], content: "Apply Style" });
     applyStyleBtn.addEventListener("click", () => {
-        style[targetElement] = style[targetElement] || {};
-        style[targetElement][selectedStyleKey[0]] = selectedStyleValue;
-        console.log(style);
-        console.log(defaultStyle);
-        reRenderDisplay();
+        const styleType = isClass ? 'class' : 'id';
+        styles[styleType][targetElement] = styles[styleType][targetElement] || {};
+        styles[styleType][targetElement][selectedStyleKey[0]] = selectedStyleValue;
+        console.log(styles);
+        refreshStyles();
 
     });
     const toggleClassBtn = createHtmlElement({ tag: "button", parent: editor, id: "toggleClassBtn", classes: [], content: "Toggle Class/Classless" });
@@ -167,14 +178,24 @@ function createEditorLayout(root) {
 
 }
 
+function refreshStyles(){
+    const allElements = document.querySelectorAll(".jsonElement");
+    allElements.forEach((element) => {
+        const depth = element.classList[0].length - 1;
+        const newStyle = createSytleObject(depth, element.classList[0], element.id);
+        element.setAttribute('style', stringifyStyle(newStyle));
+    });
+}
+
 function buildLayout() {
     
     const root = findById('root');
-    const quiz = createHtmlElement({ tag: "div", parent: root, id: "quizContainer" });
+    const quizDiv = createQuizDiv();
+    root.appendChild(quizDiv);
+    const quiz = createHtmlElement({ tag: "div", parent: quizDiv, id: "quizContainer" });
     createEditorLayout(quiz);
     buildSpacer(quiz);
     createHtmlElement({ tag: "div", parent: root, id: "displayContainer" });
-    findById("quizContainer").appendChild(createQuizDiv());
     findById("url").addEventListener("change", (event) => {
         url = event.target.value;
     });
@@ -221,41 +242,45 @@ function stringifyStyle(styleObject) {
         return `${key}: ${value};`}).join(' ');
 }
 
-function displayJsonData(parent, data, depth = 0, classCode = "r", inline = false) {
-    
-    let newStyle = {...defaultStyle};
+function updateOject(object, updateOject){
+    Object.entries(updateOject).forEach( ([key, value]) => {
+        object[key] = value;
+    });
+    return object;
+}
+
+function createSequentialId() {
+    sequentialId++;
+    return sequentialId.toString();
+}
+
+function createSytleObject(depth, classCode, id) {
+    let newStyle = {...styles.defaultStyle};
     newStyle.marginLeft = `${depth * displacement}px`;
     newStyle.lineHeight = `${lineheight}px`;
-    newStyle.display = "block";
-    newStyle.backgroundColor = backgroundColors[sequentialId % backgroundColors.length];
-    let final = null;
-    if (style[sequentialId.toString()]){
-        final = style[sequentialId.toString()];
-    } else if (style[classCode]){
-        final = style[classCode];
-    }
-    final&&console.log(final);
-    final&& Object.entries(final).forEach( ([key, value]) => {
-        newStyle[key] = value;
-    });
-    sequentialId++;
+    styles.id[id] && (updateOject(newStyle, styles.id[id]));
+    styles.class[classCode] && (updateOject(newStyle, styles.class[classCode]));
+    return newStyle;
+}
+
+function displayJsonData(parent, data, depth = 0, classCode = "r") {
+    
+    let newStyle = createSytleObject(depth, classCode, (sequentialId-1).toString());
     if (!(data instanceof Object) && !(data instanceof Array)) {
-        final = createHtmlElement({ parent: parent, tag: 'div', content: `${data}`, id: sequentialId.toString(), classes: makeClasslist(classCode), attributes: {style: stringifyStyle(newStyle) } });
-        sequentialId++;
+        final = createHtmlElement({ parent: parent, tag: 'div', content: `${data}`, id: createSequentialId(), classes: makeClasslist(classCode), attributes: {style: stringifyStyle(newStyle) } });
         return;
     }
     if (data instanceof Object) {
         let i = true;
         for (const [key, value] of Object.entries(data)) {
-            let newParent = createHtmlElement({ parent: parent, tag: 'div', id: sequentialId.toString(), classes: makeClasslist(classCode), content: `${key}:`, attributes:  {style: stringifyStyle(newStyle) } });
+            let newParent = createHtmlElement({ parent: parent, tag: 'div', id: createSequentialId(), classes: makeClasslist(classCode), content: `${key}:`, attributes:  {style: stringifyStyle(newStyle) } });
                 
-            displayJsonData(newParent, value, depth + 1, classCode + 'O', i);
-            i = false;
+                            displayJsonData(newParent, value, depth + 1, classCode + 'O');
         }
     }
     if (data instanceof Array) {
         for (let datum of data){
-            const element =createHtmlElement({ parent: parent, tag: 'div', id: sequentialId.toString(), classes: makeClasslist(classCode), attributes: {style: stringifyStyle(newStyle) } });
+            const element =createHtmlElement({ parent: parent, tag: 'div', id: createSequentialId(), classes: makeClasslist(classCode), attributes: {style: stringifyStyle(newStyle) } });
                 
             displayJsonData(element, datum, depth + 1, classCode + 'A');
         };
