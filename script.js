@@ -175,6 +175,20 @@ function createEditorLayout(root) {
     toggleClassBtn.addEventListener("click", () => {
         isClass = !isClass;
     });
+    const donwloadHtmlBtn = createHtmlElement({ tag: "button", parent: editor, id: "downloadBtn", classes: [], content: "Download" });
+    donwloadHtmlBtn.addEventListener("click", () => {
+        const htmlContent = document.getElementById("displayContainer").innerHTML;
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'styled_json_viewer.html';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+)
 
 }
 
@@ -286,6 +300,12 @@ function displayJsonData(parent, data, depth = 0, classCode = "r") {
         };
     }
 }
+
+HTMLElement.prototype.add = function(element) {
+    this.appendChild(element);
+    return this;
+}
+
 
 function init() {
     buildLayout();
