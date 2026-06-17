@@ -5,6 +5,7 @@ let sequentialId = 0;
 let lineheight = 20;
 let displacement = 20;
 let isEditorOpen = false;
+
 function makeReactive(target, onChange) {
     if (typeof target !== 'object' || target === null) return target;
     for (const key in target) {
@@ -32,18 +33,18 @@ function scheduleRefresh() {
     refreshScheduled = true;
     queueMicrotask(() => {
         refreshScheduled = false;
-        refreshStyles();
+        refreshAllStyles();
     });
 }
 
-const styles = makeReactive({id: {}, class: {}, defaultStyle: {    color: 'black',
+const styles = makeReactive({ defaultStyle: {    color: 'black',
     fontSize: '14px',
     backgroundColor: 'white',
     display: 'block',
     marginLeft: '0px',
     marginRight: '0px',
     textAlign: 'left',
-    
+
     lineHeight: '20px',
     padding: '2px',
     borderRadius: '4px',
@@ -75,15 +76,106 @@ const styles = makeReactive({id: {}, class: {}, defaultStyle: {    color: 'black
     borderStyle: 'solid',
     borderColor: '#ccc',
     fontWeight: 'normal',
-    fontFamily: 'Arial, sans-serif'}}, scheduleRefresh);
+    fontFamily: 'Arial, sans-serif'} }, scheduleRefresh);
+
 let targetElement = null;
 let targetStyle = {};
 const classCodes = {};
 let selectedStyleKey = [''];
 let selectedStyleValue = '';
 let selectedElement = null;
+let selectedNode = null;
 let isClass = false;
 const backgroundColors = ['#FFCDD2', '#F8BBD0', '#E1BEE7', '#D1C4E9', '#C5CAE9', '#BBDEFB', '#B3E5FC', '#B2EBF2', '#B2DFDB', '#C8E6C9', '#DCEDC8', '#F0F4C3', '#FFF9C4', '#FFECB3', '#FFE0B2', '#FFCCBC'];
+
+// classCode -> reactive per-classCode style override, e.g. shared by every node rendered with the same structural path.
+const classStyles = new Map();
+function getClassStyle(classCode) {
+    if (!classStyles.has(classCode)) {
+        classStyles.set(classCode, makeReactive({}, () => refreshClass(classCode)));
+    }
+    return classStyles.get(classCode);
+}
+
+// id -> JsonNode, classCode -> Set<JsonNode>, populated as displayJsonData renders the tree.
+const nodesById = new Map();
+const nodesByClass = new Map();
+
+function registerNode(node) {
+    nodesById.set(node.id, node);
+    if (!nodesByClass.has(node.classCode)) {
+        nodesByClass.set(node.classCode, new Set());
+    }
+    nodesByClass.get(node.classCode).add(node);
+}
+
+function clearNodeRegistry() {
+    nodesById.clear();
+    nodesByClass.clear();
+}
+
+function refreshAllStyles() {
+    nodesById.forEach((node) => node.refresh());
+}
+
+function refreshClass(classCode) {
+    const nodes = nodesByClass.get(classCode);
+    if (nodes) nodes.forEach((node) => node.refresh());
+}
+
+// One JsonNode per rendered element: keeps the link to the live JSON value (and where to write
+// it back), to its parent/children nodes, and to its own style overrides so it can refresh itself
+// without touching the rest of the tree.
+class JsonNode {
+    constructor({ id, data, parentContainer, key, parent, depth, classCode }) {
+        this.id = id;
+        this.data = data;
+        this.parentContainer = parentContainer;
+        this.key = key;
+        this.parent = parent;
+        this.children = [];
+        this.depth = depth;
+        this.classCode = classCode;
+        this.element = null;
+        this.ownStyle = makeReactive({}, () => this.refresh());
+    }
+
+    addChild(child) {
+        this.children.push(child);
+        return child;
+    }
+
+    computeStyle() {
+        const merged = { ...styles.defaultStyle };
+        merged.marginLeft = `${this.depth * displacement}px`;
+        merged.lineHeight = `${lineheight}px`;
+        const classStyle = classStyles.get(this.classCode);
+        if (classStyle) updateOject(merged, classStyle);
+        updateOject(merged, this.ownStyle);
+        return merged;
+    }
+
+    refresh() {
+        if (this.element) {
+            this.element.setAttribute('style', stringifyStyle(this.computeStyle()));
+        }
+    }
+
+    refreshTree() {
+        this.refresh();
+        this.children.forEach((child) => child.refreshTree());
+    }
+
+    setValue(newValue) {
+        this.data = newValue;
+        if (this.parentContainer && this.key !== null) {
+            this.parentContainer[this.key] = newValue;
+        }
+        if (this.element) {
+            this.element.innerText = `${newValue}`;
+        }
+    }
+}
 
 function createHtmlElement({ tag, content = '', parent = null, classes = [], id = '', attributes = {} }) {
     if (!tag || typeof tag !== 'string') {
@@ -95,7 +187,7 @@ function createHtmlElement({ tag, content = '', parent = null, classes = [], id 
     if (content) {
         element.innerText = content;
     }
-    
+
     if (Array.isArray(classes) && classes.length > 0) {
         element.classList.add(...classes);
     }
@@ -109,7 +201,7 @@ function createHtmlElement({ tag, content = '', parent = null, classes = [], id 
             element.setAttribute(key, value);
         });
     }
-    
+
     if (parent instanceof HTMLElement) {
         parent.appendChild(element);
     } else if (parent !== null) {
@@ -143,9 +235,10 @@ function selectMaker(from, variable, parent){
 
 async function onButtonClick() {
     findById("displayContainer").innerHTML = '';
+    clearNodeRegistry();
+    sequentialId = 0;
     await fetchJsonData(url, apiKey);
     displayJsonData(findById("displayContainer"), mainJson);
-    eventuateAllElements();
 }
 
 
@@ -189,19 +282,23 @@ async function fetchJsonData(url, apiKey) {
 function createEditorLayout(root) {
     const editor = createHtmlElement({ tag: "div", parent: root, id: "editorContainer", classes: ["editor"], attributes: { style: "border: 1px solid black; padding: 10px; position: relative;" } });
     const styleValue = createHtmlElement({ tag: "input", parent: editor, id: "styleValue", classes: [], attributes: { type: "text", placeholder: "Enter CSS value (e.g., red, 20px)" } });
-    
+
         styleValue.addEventListener("change", (event) => {
         selectedStyleValue = event.target.value;
     });
     const styleKeySelect = selectMaker(Object.keys(styles.defaultStyle), selectedStyleKey, editor);
     const applyStyleBtn = createHtmlElement({ tag: "button", parent: editor, id: "applyStyleBtn", classes: [], content: "Apply Style" });
     applyStyleBtn.addEventListener("click", () => {
-        const styleType = isClass ? 'class' : 'id';
-        styles[styleType][targetElement] = styles[styleType][targetElement] || {};
-        styles[styleType][targetElement][selectedStyleKey[0]] = selectedStyleValue;
-        console.log(styles);
-        refreshStyles();
-
+        if (!selectedNode) {
+            console.warn('No element selected to style. Click a rendered value first.');
+            return;
+        }
+        const key = selectedStyleKey[0];
+        if (isClass) {
+            getClassStyle(selectedNode.classCode)[key] = selectedStyleValue;
+        } else {
+            selectedNode.ownStyle[key] = selectedStyleValue;
+        }
     });
     const toggleClassBtn = createHtmlElement({ tag: "button", parent: editor, id: "toggleClassBtn", classes: [], content: "Toggle Class/Classless" });
     toggleClassBtn.addEventListener("click", () => {
@@ -224,24 +321,23 @@ function createEditorLayout(root) {
 
 }
 
-function refreshStyles(){
-    const allElements = document.querySelectorAll(".jsonElement");
-    allElements.forEach((element) => {
-        const depth = element.classList[0].length - 1;
-        const newStyle = createSytleObject(depth, element.classList[0], element.id);
-        element.setAttribute('style', stringifyStyle(newStyle));
-    });
-}
-
 function buildLayout() {
-    
+
     const root = findById('root');
     const quizDiv = createQuizDiv();
     root.appendChild(quizDiv);
     const quiz = createHtmlElement({ tag: "div", parent: quizDiv, id: "quizContainer" });
     createEditorLayout(quiz);
     buildSpacer(quiz);
-    createHtmlElement({ tag: "div", parent: root, id: "displayContainer" });
+    const displayContainer = createHtmlElement({ tag: "div", parent: root, id: "displayContainer" });
+    displayContainer.addEventListener("click", (event) => {
+        if (!event.target.classList.contains("jsonElement")) return;
+        const node = nodesById.get(event.target.id);
+        if (!node) return;
+        selectedNode = node;
+        selectedElement = event.target;
+        targetElement = isClass ? node.classCode : node.id;
+    });
     findById("url").addEventListener("change", (event) => {
         url = event.target.value;
     });
@@ -257,21 +353,9 @@ function clearDisplay(id) {
 
 function reRenderDisplay(){
     clearDisplay("displayContainer");
+    clearNodeRegistry();
     sequentialId = 0;
     displayJsonData(findById("displayContainer"), mainJson);
-    eventuateAllElements();
-}
-
-function eventuateAllElements(){
-    document.querySelectorAll(".jsonElement").forEach((child) => {
-        child.addEventListener("click", (event) => {
-                let assignToClass = isClass ? event.target.classList[0]:event.target.id.toString();
-                targetElement = assignToClass;
-                selectedElement = event.target;
-            console.log(assignToClass);
-            console.log(targetElement);
-        });
-    });
 }
 
 function buildSpacer(parent){
@@ -279,8 +363,8 @@ function buildSpacer(parent){
     container.addEventListener('click', (event) => {
         displacement = event.offsetX;
         lineheight = event.offsetY;
-        reRenderDisplay();
-        
+        refreshAllStyles();
+
     });
 };
 
@@ -302,44 +386,43 @@ function createSequentialId() {
     return sequentialId.toString();
 }
 
-function createSytleObject(depth, classCode, id) {
-    let newStyle = {...styles.defaultStyle};
-    newStyle.marginLeft = `${depth * displacement}px`;
-    newStyle.lineHeight = `${lineheight}px`;
-    styles.id[id] && (updateOject(newStyle, styles.id[id]));
-    styles.class[classCode] && (updateOject(newStyle, styles.class[classCode]));
-    return newStyle;
-}
+function displayJsonData(parent, data, depth = 0, classCode = "r", parentNode = null, parentContainer = null, key = null) {
+    if (!(data instanceof Object)) {
+        const id = createSequentialId();
+        const node = new JsonNode({ id, data, parentContainer, key, parent: parentNode, depth, classCode });
+        const element = createHtmlElement({ parent, tag: 'div', content: `${data}`, id, classes: makeClasslist(classCode) });
+        node.element = element;
+        registerNode(node);
+        if (parentNode) parentNode.addChild(node);
+        node.refresh();
+        return node;
+    }
 
-function displayJsonData(parent, data, depth = 0, classCode = "r") {
-    
-    let newStyle = createSytleObject(depth, classCode, (sequentialId-1).toString());
-    if (!(data instanceof Object) && !(data instanceof Array)) {
-        final = createHtmlElement({ parent: parent, tag: 'div', content: `${data}`, id: createSequentialId(), classes: makeClasslist(classCode), attributes: {style: stringifyStyle(newStyle) } });
-            final.addEventListener("click", (event) => {
-                selectedElement = event.target;
-               });
-        return;
+    if (Array.isArray(data)) {
+        return data.map((datum, index) => {
+            const id = createSequentialId();
+            const node = new JsonNode({ id, data: datum, parentContainer: data, key: index, parent: parentNode, depth, classCode });
+            const element = createHtmlElement({ parent, tag: 'div', id, classes: makeClasslist(classCode) });
+            node.element = element;
+            registerNode(node);
+            if (parentNode) parentNode.addChild(node);
+            node.refresh();
+            displayJsonData(element, datum, depth + 1, classCode + 'A', node, data, index);
+            return node;
+        });
     }
-    if (data instanceof Object) {
-        let i = true;
-        for (const [key, value] of Object.entries(data)) {
-            let newParent = createHtmlElement({ parent: parent, tag: 'div', id: createSequentialId(), classes: makeClasslist(classCode), content: `${key}:`, attributes:  {style: stringifyStyle(newStyle) } });
-               newParent.addEventListener("click", (event) => {
-                selectedElement = event.target;
-               }); 
-                            displayJsonData(newParent, value, depth + 1, classCode + 'O');
-        }
-    }
-    if (data instanceof Array) {
-        for (let datum of data){
-            const element =createHtmlElement({ parent: parent, tag: 'div', id: createSequentialId(), classes: makeClasslist(classCode), attributes: {style: stringifyStyle(newStyle) } });
-                element.addEventListener("click", (event) => {
-                selectedElement = event.target;
-               });
-            displayJsonData(element, datum, depth + 1, classCode + 'A');
-        };
-    }
+
+    return Object.entries(data).map(([entryKey, value]) => {
+        const id = createSequentialId();
+        const node = new JsonNode({ id, data: value, parentContainer: data, key: entryKey, parent: parentNode, depth, classCode });
+        const element = createHtmlElement({ parent, tag: 'div', id, classes: makeClasslist(classCode), content: `${entryKey}:` });
+        node.element = element;
+        registerNode(node);
+        if (parentNode) parentNode.addChild(node);
+        node.refresh();
+        displayJsonData(element, value, depth + 1, classCode + 'O', node, data, entryKey);
+        return node;
+    });
 }
 
 HTMLElement.prototype.add = function(element) {
