@@ -5,7 +5,38 @@ let sequentialId = 0;
 let lineheight = 20;
 let displacement = 20;
 let isEditorOpen = false;
-const styles = {id: {}, class: {}, defaultStyle: {    color: 'black',
+function makeReactive(target, onChange) {
+    if (typeof target !== 'object' || target === null) return target;
+    for (const key in target) {
+        if (typeof target[key] === 'object' && target[key] !== null) {
+            target[key] = makeReactive(target[key], onChange);
+        }
+    }
+    return new Proxy(target, {
+        set(obj, prop, value) {
+            obj[prop] = (typeof value === 'object' && value !== null) ? makeReactive(value, onChange) : value;
+            onChange();
+            return true;
+        },
+        deleteProperty(obj, prop) {
+            delete obj[prop];
+            onChange();
+            return true;
+        }
+    });
+}
+
+let refreshScheduled = false;
+function scheduleRefresh() {
+    if (refreshScheduled) return;
+    refreshScheduled = true;
+    queueMicrotask(() => {
+        refreshScheduled = false;
+        refreshStyles();
+    });
+}
+
+const styles = makeReactive({id: {}, class: {}, defaultStyle: {    color: 'black',
     fontSize: '14px',
     backgroundColor: 'white',
     display: 'block',
@@ -44,12 +75,13 @@ const styles = {id: {}, class: {}, defaultStyle: {    color: 'black',
     borderStyle: 'solid',
     borderColor: '#ccc',
     fontWeight: 'normal',
-    fontFamily: 'Arial, sans-serif'}};
+    fontFamily: 'Arial, sans-serif'}}, scheduleRefresh);
 let targetElement = null;
 let targetStyle = {};
 const classCodes = {};
 let selectedStyleKey = [''];
 let selectedStyleValue = '';
+let selectedElement = null;
 let isClass = false;
 const backgroundColors = ['#FFCDD2', '#F8BBD0', '#E1BEE7', '#D1C4E9', '#C5CAE9', '#BBDEFB', '#B3E5FC', '#B2EBF2', '#B2DFDB', '#C8E6C9', '#DCEDC8', '#F0F4C3', '#FFF9C4', '#FFECB3', '#FFE0B2', '#FFCCBC'];
 
@@ -235,7 +267,9 @@ function eventuateAllElements(){
         child.addEventListener("click", (event) => {
                 let assignToClass = isClass ? event.target.classList[0]:event.target.id.toString();
                 targetElement = assignToClass;
+                selectedElement = event.target;
             console.log(assignToClass);
+            console.log(targetElement);
         });
     });
 }
@@ -282,20 +316,27 @@ function displayJsonData(parent, data, depth = 0, classCode = "r") {
     let newStyle = createSytleObject(depth, classCode, (sequentialId-1).toString());
     if (!(data instanceof Object) && !(data instanceof Array)) {
         final = createHtmlElement({ parent: parent, tag: 'div', content: `${data}`, id: createSequentialId(), classes: makeClasslist(classCode), attributes: {style: stringifyStyle(newStyle) } });
+            final.addEventListener("click", (event) => {
+                selectedElement = event.target;
+               });
         return;
     }
     if (data instanceof Object) {
         let i = true;
         for (const [key, value] of Object.entries(data)) {
             let newParent = createHtmlElement({ parent: parent, tag: 'div', id: createSequentialId(), classes: makeClasslist(classCode), content: `${key}:`, attributes:  {style: stringifyStyle(newStyle) } });
-                
+               newParent.addEventListener("click", (event) => {
+                selectedElement = event.target;
+               }); 
                             displayJsonData(newParent, value, depth + 1, classCode + 'O');
         }
     }
     if (data instanceof Array) {
         for (let datum of data){
             const element =createHtmlElement({ parent: parent, tag: 'div', id: createSequentialId(), classes: makeClasslist(classCode), attributes: {style: stringifyStyle(newStyle) } });
-                
+                element.addEventListener("click", (event) => {
+                selectedElement = event.target;
+               });
             displayJsonData(element, datum, depth + 1, classCode + 'A');
         };
     }
