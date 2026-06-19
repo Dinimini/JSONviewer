@@ -86,6 +86,9 @@ let selectedStyleValue = '';
 let selectedElement = null;
 let selectedNode = null;
 let isClass = false;
+let copiedStyle = null;
+// Layout-driven, not a real "style" choice - excluded when sampling a style to copy elsewhere.
+const STRUCTURAL_STYLE_KEYS = ['marginLeft', 'lineHeight'];
 const backgroundColors = ['#FFCDD2', '#F8BBD0', '#E1BEE7', '#D1C4E9', '#C5CAE9', '#BBDEFB', '#B3E5FC', '#B2EBF2', '#B2DFDB', '#C8E6C9', '#DCEDC8', '#F0F4C3', '#FFF9C4', '#FFECB3', '#FFE0B2', '#FFCCBC'];
 
 // classCode -> reactive per-classCode style override, e.g. shared by every node rendered with the same structural path.
@@ -121,60 +124,6 @@ function refreshAllStyles() {
 function refreshClass(classCode) {
     const nodes = nodesByClass.get(classCode);
     if (nodes) nodes.forEach((node) => node.refresh());
-}
-
-// One JsonNode per rendered element: keeps the link to the live JSON value (and where to write
-// it back), to its parent/children nodes, and to its own style overrides so it can refresh itself
-// without touching the rest of the tree.
-class JsonNode {
-    constructor({ id, data, parentContainer, key, parent, depth, classCode }) {
-        this.id = id;
-        this.data = data;
-        this.parentContainer = parentContainer;
-        this.key = key;
-        this.parent = parent;
-        this.children = [];
-        this.depth = depth;
-        this.classCode = classCode;
-        this.element = null;
-        this.ownStyle = makeReactive({}, () => this.refresh());
-    }
-
-    addChild(child) {
-        this.children.push(child);
-        return child;
-    }
-
-    computeStyle() {
-        const merged = { ...styles.defaultStyle };
-        merged.marginLeft = `${this.depth * displacement}px`;
-        merged.lineHeight = `${lineheight}px`;
-        const classStyle = classStyles.get(this.classCode);
-        if (classStyle) updateOject(merged, classStyle);
-        updateOject(merged, this.ownStyle);
-        return merged;
-    }
-
-    refresh() {
-        if (this.element) {
-            this.element.setAttribute('style', stringifyStyle(this.computeStyle()));
-        }
-    }
-
-    refreshTree() {
-        this.refresh();
-        this.children.forEach((child) => child.refreshTree());
-    }
-
-    setValue(newValue) {
-        this.data = newValue;
-        if (this.parentContainer && this.key !== null) {
-            this.parentContainer[this.key] = newValue;
-        }
-        if (this.element) {
-            this.element.innerText = `${newValue}`;
-        }
-    }
 }
 
 function createHtmlElement({ tag, content = '', parent = null, classes = [], id = '', attributes = {} }) {
@@ -279,14 +228,24 @@ async function fetchJsonData(url, apiKey) {
     }
 }
 
+function updateStyleValueDisplay() {
+    const styleValueInput = findById('styleValue');
+    if (!styleValueInput) return;
+    const key = selectedStyleKey[0];
+    const value = selectedNode ? (selectedNode.computeStyle()[key] ?? '') : (styles.defaultStyle[key] ?? '');
+    styleValueInput.value = value;
+    selectedStyleValue = value;
+}
+
 function createEditorLayout(root) {
-    const editor = createHtmlElement({ tag: "div", parent: root, id: "editorContainer", classes: ["editor"], attributes: { style: "border: 1px solid black; padding: 10px; position: relative;" } });
+    const editor = createHtmlElement({ tag: "div", parent: root, id: "editorContainer", classes: ["editor"], attributes: { style: "border: 1px solid black; padding: 10px; position: relative; display: none;" } });
     const styleValue = createHtmlElement({ tag: "input", parent: editor, id: "styleValue", classes: [], attributes: { type: "text", placeholder: "Enter CSS value (e.g., red, 20px)" } });
 
         styleValue.addEventListener("change", (event) => {
         selectedStyleValue = event.target.value;
     });
     const styleKeySelect = selectMaker(Object.keys(styles.defaultStyle), selectedStyleKey, editor);
+    styleKeySelect.addEventListener("change", updateStyleValueDisplay);
     const applyStyleBtn = createHtmlElement({ tag: "button", parent: editor, id: "applyStyleBtn", classes: [], content: "Apply Style" });
     applyStyleBtn.addEventListener("click", () => {
         if (!selectedNode) {
@@ -299,10 +258,39 @@ function createEditorLayout(root) {
         } else {
             selectedNode.ownStyle[key] = selectedStyleValue;
         }
+        editor.style.display = 'none';
     });
-    const toggleClassBtn = createHtmlElement({ tag: "button", parent: editor, id: "toggleClassBtn", classes: [], content: "Toggle Class/Classless" });
-    toggleClassBtn.addEventListener("click", () => {
-        isClass = !isClass;
+    const isClassLabel = createHtmlElement({ tag: "label", parent: editor, content: "Apply to class", attributes: { for: "isClassCheckbox" } });
+    const isClassCheckbox = createHtmlElement({ tag: "input", parent: editor, id: "isClassCheckbox", classes: [], attributes: { type: "checkbox" } });
+    isClassCheckbox.addEventListener("change", (event) => {
+        isClass = event.target.checked;
+    });
+    const copyStyleBtn = createHtmlElement({ tag: "button", parent: editor, id: "copyStyleBtn", classes: [], content: "🧪 Copy Style", attributes: { title: "Copy this element's style to apply elsewhere later" } });
+    copyStyleBtn.addEventListener("click", () => {
+        if (!selectedNode) {
+            console.warn('No element selected to copy a style from. Click a rendered value first.');
+            return;
+        }
+        copiedStyle = { ...selectedNode.computeStyle() };
+        STRUCTURAL_STYLE_KEYS.forEach((key) => delete copiedStyle[key]);
+        console.log('Copied style', copiedStyle);
+    });
+    const pasteStyleBtn = createHtmlElement({ tag: "button", parent: editor, id: "pasteStyleBtn", classes: [], content: "Paste Style" });
+    pasteStyleBtn.addEventListener("click", () => {
+        if (!selectedNode) {
+            console.warn('No element selected to paste the copied style onto. Click a rendered value first.');
+            return;
+        }
+        if (!copiedStyle) {
+            console.warn('Nothing copied yet. Use Copy Style on an element first.');
+            return;
+        }
+        if (isClass) {
+            Object.assign(getClassStyle(selectedNode.classCode), copiedStyle);
+        } else {
+            Object.assign(selectedNode.ownStyle, copiedStyle);
+        }
+        editor.style.display = 'none';
     });
     const donwloadHtmlBtn = createHtmlElement({ tag: "button", parent: editor, id: "downloadBtn", classes: [], content: "Download" });
     donwloadHtmlBtn.addEventListener("click", () => {
@@ -337,6 +325,8 @@ function buildLayout() {
         selectedNode = node;
         selectedElement = event.target;
         targetElement = isClass ? node.classCode : node.id;
+        findById("editorContainer").style.display = 'block';
+        updateStyleValueDisplay();
     });
     findById("url").addEventListener("change", (event) => {
         url = event.target.value;
